@@ -85,6 +85,271 @@ Entity 简单的说就是实体, 是 PHP 的一个对象. 既然是 PHP 的一�
 
 这里我们不再用传统的方法去写这个系统. 没有什么意义. 这里我特意的把标准的数据表结构设计出来一来是先理解整个数据系统的设计原理和结构. 二来是接下来使用 ORM 的时候对比来学习会更加容易理解 ORM 的使用.
 
+# ORM 项目实战
+接下来我们创建一个具体可实施的项目, 一步一步的来探究 ORM 的具体使用和效果. 项目文件可以存放在任意文件夹下面. 我们接下的命令执行都是在此目录下进行执行.
+
+## ORM 项目实战 - 01:初始化
+由于我们使用 PHP 的 composer 包管理器来搭建项目. 所有初始化最开始的事我们需要创建一个简单的 composer.json 配置文件放到项目的根目录. 我们使用最简单模式开始. 配置文件内容如下:
+
+```json
+{
+    "require": {
+        "doctrine/orm": "^2.4"
+    },
+    "autoload": {
+        "psr-0": {
+            "": "src/"
+        }
+    }
+}
+```
+
+接下来. 我们执行包管理器命令让项目需要的包自动部署好.
+
+```shell
+$ composer install
+```
+Composer 会把相关的包都下载好保存在 vendor 目录下. 我们不用关心具体下载了哪些包.
+
+## 项目实战 - 02:生成实体管理器
+Doctrine 这个 ORM 的具体接口都是通过 `EntityManager`(实体管理器) 来操作. 所以我们需要先生成这个 `EntityManager`. 我们使用下面的代码来创建 `EntityManager`, 具体的代码分析我们在下面会详细的讲解.
+
+```php
+<?php
+/**
+ * bootstrap.php
+ *
+ * ORM 启动配置
+ *
+ * @author: Leo
+ * @version: 1.0
+ */
+
+use Doctrine\ORM\Tools\Setup;
+use Doctrine\ORM\EntityManager;
+
+// Autoload 配置
+require_once "vendor/autoload.php";
+
+// ORM 配置
+$isDevMode = true;
+$config = Setup::createAnnotationMetadataConfiguration([__DIR__ . "/src"], $isDevMode);
+
+// 数据库连接配置
+$dbConfig = [
+	'driver' => 'pdo_mysql',
+    'host' => 'localhost',
+    'user' => 'root',
+    'password' => 'root',
+    'port' => 3306,
+    'dbname' => 'test',
+    'charset' => 'utf8mb4',
+    'defaultTableOptions' => [
+        'collate' => 'utf8mb4_unicode_ci',
+        'charset' => 'utf8mb4',
+        'engine' => 'InnoDB',
+    ],
+];
+
+// 创建实体管理器
+$entityManager = EntityManager::create($dbConfig, $config);
+```
+创建实体管理的代码非常简单. 主要是生成配置文件这里我们需要传入我们的实体定义类保存路径. 这里我们会把实体的定义类都放置在 src 目录下. 我们这里只是作为一个测试学习使用的项目目录布局. 真实的项目源代码组织结构可能要比当前的复杂一些. 不过本质是一样的. 需要告诉实体管理器的配置文件哪里可以找到实体定义类. **src目录我们需要自行手动先创建好.**
+另外一点是我们使用 MySQL 作为测试数据库平台. 原版教程使用的是 Sqlite. 实际上关系不大, 使用 MySQL 主要是可以更多的先让大家可以接触一些配置信息. 所以我们需要自己搭建一下 MySQL 服务器环境, 确保通过配置文件的 host, user, password, port 这些信息能够连接数据库, 并且能够有足够的权限针对 dbname 这个数据库进行操作.
+
+## 项目实战 - 03:生成数据库
+由于我们使用命令行来操作演示 ORM, 所以 Doctrine 在使用相关的命令行工具的时候需要给这个命令行工具进行相关的配置, 配置的过程非常简单. 只需要简单一行代码就可以完成. 具体的代码如下:
+
+```php
+<?php
+/**
+ * cli-config.php
+ *
+ * Console 配置
+ *
+ * @author: Leo
+ * @version: 1.0
+ */
+
+require_once "bootstrap.php";
+
+return \Doctrine\ORM\Tools\Console\ConsoleRunner::createHelperSet($entityManager);
+```
+到此, 我们执行 ORM 的命令的环境准备工作就完成了. 我们可以执行相关的命令看看效果. **所有的命令执行的终端当前目录均为项目根目录**. 接下来不再重复说明啦.
+
+通常我们第一步是进行创建数据表. 使用如下命令执行:
+
+```shell
+$ cd project-root-path/
+$ vendor/bin/doctrine orm:schema-tool:create
+```
+通常这个时候我们执行完这个命令会得到下面的提示信息:
+
+```shell
+No Metadata Classes to process.
+```
+这个是因为我们还没有定义任何实体类在 src 目录中. 接下来我们开始定义我们的实体类. 在定义实体类之前我们先了解一下 schema-tool 的另外两个简单命令. 通常我们操作数据库都会涉及到 创建, 删除, 更新这三类操作. 那么对应的 schema-tool 也提供了这三种命令. 创建命令这个我们刚才已经使用过了. 那么删除命令具体的使用方法如下:
+
+```shell
+$ vendor/bin/doctrine orm:schema-tool:drop --force
+```
+
+更新命令也是类似的:
+
+```shell
+$ vendor/bin/doctrine orm:schema-tool:update --force
+```
+我们接下来在具体的实体操作中再继续使用这些命令.
+
+## 项目实战 - 04:创建产品实体类
+我们先创建一个简单的实体, 在这个 Bug 追踪系统中我们有一个很简单实体就是产品(Proudct). 我们之前在配置文件声明了所有的实体类存放在项目根目录下的 src 目录中. 我们接下来的所有实体定义类都会存放在该目录下. 我们先定义一个简单实体类. 
+
+```php
+<?php
+/**
+ * src/Product.php
+ *
+ * @author: Leo
+ * @version: 1.0
+ */
+class Product
+{
+    /**
+     * @var integer
+     */
+    protected $productID;
+
+    /**
+     * @var string
+     */
+    protected $productName;
+
+
+    /**
+     * @return integer
+     */
+    public function getProductID()
+    {
+        return $this->productID;
+    }
+
+    /**
+     * @return string
+     */
+    public function getProductName()
+    {
+        return $this->productName;
+    }
+
+    /**
+     * @param string $productName
+     */
+    public function setProductName($productName)
+    {
+        $this->productName = $productName;
+    }
+}
+```
+很简单的 PHP 类定义, 我们还是简要的说明一下. 
+Product 类定义了2个属性, 对于实体类, 这里我们强调一下. 所有的属性不能设置为 public, 避免被直接访问, 按照 OOP 的设计原则, 通过接口来访问和设置属性更安全.
+对于 Product 来说, 暂且作为一个数据库表来理解的话, 一个表通常会有一个主键 ID, 对于这种 ID 属性, 特别是由数据库自动生成的, 我们通常不留对外开放的设置或修改接口.
+
+接下来我们还要做一些工作来告诉 Doctrine 这个 ORM. 要让 ORM 更好的理解这个Product实体, 以便实现数据库持久化. 这里使用了 DocBlock 声明指令. 这个是一个单独的技术章节. 我们在以后的教程中具体的介绍 DocBlock 在类注释中的使用细节. 暂时不了解也没有关系. 我们先使用几个简单的指令, 然后再具体的说明一下. 针对我们刚才编写的 src/Product.php 文件, 我们添加一些 DocBlock 指令.
+
+```php
+<?php
+/**
+ * src/Product.php
+ *
+ * @author: Leo
+ * @version: 1.0
+ *
+ * @Entity
+ * @Table(name="products")
+ */
+class Product
+{
+    /**
+     * @var integer
+     * @Id
+     * @GeneratedValue
+     * @Column(type="integer", name="product_id")
+     */
+    protected $productID;
+
+    /**
+     * @var string
+     * @Column(type="string", name="product_name", length=45, nullable=false)
+     */
+    protected $productName;
+    
+    // .. 其他代码与之前的保持一致
+}
+```
+现在我们具体的说明一下加了 DocBlock 声明的代码, DocBlock 的指令或者声明都是保存在注释中. 并且由 `@` 开始.
+`Entity`: 这个指令是定义在类声明的注释中的. 声明这个类是一个实体.
+`Table`: 这个指令也是定义在类声明的注释中的. 声明这个类在数据库中的表名, 这个指令是带属性的. 属性都定义在一对括号中. 表名由属性`name`来指定, 表名是可以任意定义的, 不需要和实体保持一样的名字, 通常不指定就是默认的实体名, 建议手动指定, 我们这里定义这个表名为: `products`.
+`Id`: 这个指令是定义在类属性的注释中的. 用来说明这个是一个 ID 属性, 也就是主键属性.
+`GeneratedValue`: 这个指令通常是伴随着`Id`指令出现的. 简单的理解就是使用数据库自身的自增值来赋值给主键用. 或者说告诉数据库这个主键是一个 AUTO INCREMENT 或 Sequences 属性.
+`Column`: 这个指令定义在类属性的注释中的, 是对数据表的字段的定义了, 和之前的`Table`指令一样, 带有子属性, 相关的属性一般为: (name, type, length, precision, scale, unique, nullable, options, columnDefinition). 这里特别要说明一下. 为了代码的可读性和便于维护性. 建议对 name 子属性进行明确的定义. 虽然是使用类属性名来作为默认值, 但是在对后面的关系定义会理解的比较麻烦.
+
+现在我们已经完成了一个完整的 ORM 实体定义, 那么我们看看 ORM 怎么反向映射到数据库中. 我们使用下面的命令先把 ORM 解析出的 SQL 打印出来看看.
+
+```shell
+$ vendor/bin/doctrine orm:schema-tool:update --force --dump-sql
+```
+我们再说一下上面的这条命令, 这是一条更新数据库结构的命令. 同时带了2个参数 `--force`, `--dump-sql`. 意思很明显. 就是告诉 ORM 的 schema-tool. 强制执行更新操作. 同时把更新的 SQL 打印出来. 对于上面的这个实体更新, 我们可以看到这样的 SQL 语句被打印到屏幕上:
+
+```shell
+CREATE TABLE products (product_id INT AUTO_INCREMENT NOT NULL, product_name VARCHAR(45) NOT NULL, PRIMARY KEY(product_id)) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci ENGINE = InnoDB;
+
+Updating database schema...
+Database schema updated successfully! "1" query was executed
+``` 
+到此, 我们已经使用 ORM 实现了类定义到数据表的转化过程. 相比不使用 ORM 这个管理工具来说. 我们需要先创建数据数表, 然后再定义一个处理这个数据表的类, 或者更简单的做法是不定义类, 直接写不同的 SQL 语句在 PHP 代码中进行对数据表数据的增删改查. 通常这种原始的, 暴力的, 高效的做法我们是不赞同的. 因为代码不安全, 不利于维护, 不够优雅.
+
+定义好了实体类, 我们需要把这个实体类的利用起来, 不然我们手动创建一个数据表更方便. 不需要定义了一个类还加入奇怪的 DocBlock 指令在注释中.
+我们接下来演示如何便捷的对数据表中数据进行操作. 接下来的代码我们已经看不见 SQL 了. 因为我们不再需要去编写 SQL 啦.
+我们使用一小段代码实现增加数据的功能. 
+
+```php
+<?php
+/**
+ * create_product.php
+ *
+ * Usage: php create_product.php <name>
+ *
+ * @author: Leo
+ * @version: 1.0
+ */
+
+require_once "bootstrap.php";
+
+// 提取输入的产品名称
+$newProductName = $argv[1];
+
+// 创建实体对象并设置属性
+$entityProduct = new Product();
+$entityProduct->setProductName($newProductName);
+
+// 数据持久化
+$entityManager->persist($entityProduct);
+$entityManager->flush();
+
+echo 'Created Product With ID: ' . $entityProduct->getProductID() . PHP_EOL;
+```
+PHP 脚本编写好了我们就可以使用了. 我们在终端执行类似下面的命令. 
+
+```shell
+$ php create_product.php Product-Name-001
+```
+我们可以打开数据库, 可以查看到数据表 products 中多了一条 product_name 为 "Product-Name-001" 的数据. 我们还可以重复执行, 添加多条数据.
+我们发现插入一条新数据只要创建一个 Product 对象实例, 然后设置好相关的属性值. 再通过 `EntityManager` 的 `persist()` 和 `flush()` 接口就实现了数据入库的操作. 对的. 这个过程很友好, 简洁, 漂亮. 很 OOP.
+
+
+
+
+
 
 
 
